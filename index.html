@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="発車メロディクイズ">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<title>発車メロディ早押し練習（4択モード）</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    text-align: center;
+    background-color: #1a1a2e;
+    color: #fff;
+    margin: 0;
+    padding: 20px;
+    touch-action: manipulation;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 10px; }
+  
+  /* 音源選択エリア */
+  .setup-box {
+    background: #16213e;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+  }
+  input[type="file"] { font-size: 1rem; color: #fff; }
+
+  /* 進行コントロールボタン */
+  .controls { margin-bottom: 20px; }
+  .btn-ctrl {
+    font-size: 1.1rem;
+    padding: 14px 22px;
+    margin: 5px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  #btn-play { background-color: #0f3460; color: #fff; border: 2px solid #e94560; }
+  #btn-resume { background-color: #2b580c; color: #fff; }
+  #btn-next { background-color: #555; color: #fff; }
+
+  /* ステータス表示 */
+  #status {
+    font-size: 1.4rem;
+    font-weight: bold;
+    min-height: 2.8em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0f3460;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    padding: 12px;
+    line-height: 1.4;
+  }
+
+  /* 早押しボタン（わかったボタン） */
+  .buzzers {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .btn-buzzer {
+    width: 100%;
+    max-width: 500px;
+    height: 160px;
+    font-size: 2rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 15px;
+    color: white;
+    background-color: #e94560;
+    cursor: pointer;
+    box-shadow: 0 6px 0 rgba(0,0,0,0.4);
+  }
+  .btn-buzzer:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.4);
+  }
+  .btn-buzzer:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* 4択選択肢エリア */
+  .choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .btn-choice {
+    padding: 18px 12px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    background-color: #16213e;
+    color: #fff;
+    border: 2px solid #00a8cc;
+    border-radius: 10px;
+    cursor: pointer;
+    word-break: break-word;
+  }
+  .btn-choice:active {
+    background-color: #00a8cc;
+  }
+  .btn-choice:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+  <h1>🚃 発車メロディ早押し練習</h1>
+  <div id="offlineStatus" role="status" style="font-size:0.85rem;color:#b8e6c1;margin:0 0 12px;">オフライン利用の準備状況を確認しています…</div>
+
+  <!-- 1. 音源ファイル選択 -->
+  <div class="setup-box">
+    <p style="margin:0 0 8px 0; font-size:0.9rem;">音源ファイルを複数選択してください（4曲以上推奨）</p>
+    <input type="file" id="audioFiles" accept="audio/*,.mp3" multiple>
+    <div id="trackInfo" style="margin-top:8px; font-size:0.9rem; color:#aaa;">未選択</div>
+  </div>
+
+  <!-- 2. 進行ボタン -->
+  <div class="controls">
+    <button id="btn-play" class="btn-ctrl">▶ 最初から再生</button>
+    <button id="btn-resume" class="btn-ctrl">↻ 続きから再生</button>
+    <button id="btn-next" class="btn-ctrl">⏭ 次の曲へ</button>
+  </div>
+
+  <!-- 3. 判定結果表示 -->
+  <div id="status">音源を選択して「最初から再生」を押してください</div>
+
+  <!-- 4. 早押しボタン -->
+  <div class="buzzers" id="buzzerArea">
+    <button id="btn-wakatta" class="btn-buzzer" disabled>わかった！<br><span style="font-size:0.9rem;">[スペースキー]</span></button>
+  </div>
+
+  <!-- 5. 4択ボタンエリア -->
+  <div class="choices hidden" id="choicesArea"></div>
+
+  <audio id="player" preload="metadata" playsinline></audio>
+
+<script>
+  const fileInput = document.getElementById('audioFiles');
+  const trackInfo = document.getElementById('trackInfo');
+  const player = document.getElementById('player');
+  const statusEl = document.getElementById('status');
+  
+  const btnPlay = document.getElementById('btn-play');
+  const btnResume = document.getElementById('btn-resume');
+  const btnNext = document.getElementById('btn-next');
+  const btnWakatta = document.getElementById('btn-wakatta');
+  const buzzerArea = document.getElementById('buzzerArea');
+  const choicesArea = document.getElementById('choicesArea');
+
+  let tracks = [];
+  let currentIndex = 0;
+  let isLocked = true;
+  let startTime = 0;
+  let currentObjectUrl = null;
+
+  // ファイル名から拡張子を省く関数
+  function getCleanName(filename) {
+    return filename.replace(/\.[^/.]+$/, "");
+  }
+
+  // 配列をシャッフルする関数（Fisher-Yates）
+  function shuffle(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // 音源ファイル選択時
+  fileInput.addEventListener('change', (e) => {
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) {
+      trackInfo.textContent = "ファイルが選択されていません";
+      statusEl.textContent = "音源ファイルを選択してください";
+      return;
+    }
+
+    tracks = selected;
+    currentIndex = 0;
+    loadTrack(currentIndex);
+    statusEl.style.background = "#0f3460";
+    statusEl.textContent = `${tracks.length}曲を選択しました。再生ボタンを押してください`;
+  });
+
+  // 曲をセットする（読み込み完了を待たず、ブラウザに読み込みを開始させる）
+  function loadTrack(index) {
+    const file = tracks[index];
+    if (!file) return;
+
+    player.pause();
+    if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = URL.createObjectURL(file);
+    player.src = currentObjectUrl;
+    player.load();
+
+    trackInfo.textContent = `全${tracks.length}曲中 ${index + 1}曲目：${file.name}`;
+
+    isLocked = true;
+    btnWakatta.disabled = true;
+    buzzerArea.classList.remove('hidden');
+    choicesArea.classList.add('hidden');
+    choicesArea.innerHTML = '';
+  }
+
+  // 音声のメタデータが読み込まれたら、早押しボタンを有効化
+  player.addEventListener('loadedmetadata', () => {
+    btnWakatta.disabled = false;
+  });
+
+  player.addEventListener('error', () => {
+    const err = player.error;
+    const detail = err ? `（エラーコード ${err.code}）` : '';
+    statusEl.style.background = "#9b1c1c";
+    statusEl.textContent = `音声を読み込めません。MP3ファイルか確認してください ${detail}`;
+    trackInfo.textContent += " — 読み込みエラー";
+  });
+
+  // 再生開始処理
+  function startPlayback(fromBeginning = true) {
+    if (tracks.length === 0) return alert("先に音源ファイルを選択してください");
+
+    // メタデータ読み込み前は currentTime を変更できない場合があるため、例外を回避
+    if (fromBeginning) {
+      if (player.readyState > 0) {
+        try { player.currentTime = 0; } catch (err) { console.warn(err); }
+      }
+      startTime = performance.now();
+    }
+
+    // iOSではユーザー操作に直接応じてplay()を呼ぶ必要がある
+    let playResult;
+    try {
+      playResult = player.play();
+    } catch (err) {
+      statusEl.textContent = `再生を開始できませんでした：${err.message}`;
+      return;
+    }
+
+    isLocked = false;
+    btnWakatta.disabled = false;
+    buzzerArea.classList.remove('hidden');
+    choicesArea.classList.add('hidden');
+    statusEl.style.background = "#0f3460";
+    statusEl.textContent = "🎵 再生中... わかったらボタンを押してください！";
+
+    if (playResult && typeof playResult.catch === 'function') {
+      playResult.catch((err) => {
+        isLocked = true;
+        statusEl.style.background = "#9b1c1c";
+        statusEl.textContent = `再生できませんでした（${err.name || 'エラー'}）。Safariで開き、もう一度再生してください。`;
+        console.error('Audio play error:', err);
+      });
+    }
+  }
+
+  // ▶ 最初から再生
+  btnPlay.addEventListener('click', () => startPlayback(true));
+
+  // ↻ 続きから再生
+  btnResume.addEventListener('click', () => startPlayback(false));
+
+  // ⏭ 次の曲へ（音源をセット。再生はボタン操作で開始）
+  btnNext.addEventListener('click', () => {
+    if (tracks.length === 0) return;
+    currentIndex = (currentIndex + 1) % tracks.length;
+    loadTrack(currentIndex);
+    statusEl.textContent = "次の曲をセットしました。「最初から再生」を押してください";
+  });
+
+  // 「わかった！」押下時の処理
+  function onWakatta() {
+    if (isLocked) return;
+    isLocked = true;
+    player.pause();
+
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+    statusEl.style.background = "#d97706"; // オレンジ色
+    statusEl.textContent = `⏱ タイム: ${elapsed}秒！ 曲名を選んでください`;
+
+    // 早押しボタンを隠して4択を表示
+    buzzerArea.classList.add('hidden');
+    generateChoices();
+  }
+
+  // 4択生成処理
+  function generateChoices() {
+    choicesArea.innerHTML = '';
+    const correctName = getCleanName(tracks[currentIndex].name);
+    
+    // 正解以外のファイル名を抽出（重複排除）
+    const otherNames = [...new Set(
+      tracks
+        .map(t => getCleanName(t.name))
+        .filter(name => name !== correctName)
+    )];
+
+    // ダミー選択肢を最大3つランダム取得
+    const dummies = shuffle(otherNames).slice(0, 3);
+    
+    // 正解とダミーを混ぜてシャッフル
+    const options = shuffle([correctName, ...dummies]);
+
+    options.forEach(optionName => {
+      const btn = document.createElement('button');
+      btn.className = 'btn-choice';
+      btn.textContent = optionName;
+      btn.addEventListener('click', () => checkAnswer(optionName, correctName));
+      choicesArea.appendChild(btn);
+    });
+
+    choicesArea.classList.remove('hidden');
+  }
+
+  // 正誤判定処理
+  function checkAnswer(selectedName, correctName) {
+    // 4択ボタンを無効化（二重押し防止）
+    const buttons = choicesArea.querySelectorAll('button');
+    buttons.forEach(b => b.disabled = true);
+
+    if (selectedName === correctName) {
+      statusEl.style.background = "#2b580c"; // 緑色
+      statusEl.innerHTML = `⭕ 正解！<br><span style="font-size:1.1rem;">${correctName}</span>`;
+    } else {
+      statusEl.style.background = "#9b1c1c"; // 赤色
+      statusEl.innerHTML = `❌ 残念！<br><span style="font-size:1.1rem;">正解は「${correctName}」でした</span>`;
+    }
+  }
+
+  // タッチ・クリックイベント
+  btnWakatta.addEventListener('pointerdown', onWakatta);
+
+  // スペースキーでも「わかった！」を押せるように対応
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !isLocked) {
+      e.preventDefault(); // 画面スクロール防止
+      onWakatta();
+    }
+  });
+</script>
+
+<script>
+  // HTTPSで初回に読み込んだ際、アプリ本体を端末へ保存してオフライン利用に備える
+  (async function setupOfflineSupport() {
+    const status = document.getElementById('offlineStatus');
+    if (!('serviceWorker' in navigator)) {
+      status.textContent = 'このブラウザではオフライン保存に対応していません';
+      status.style.color = '#ffd08a';
+      return;
+    }
+    if (!/^https?:$/.test(location.protocol) || location.hostname === 'localhost') {
+      status.textContent = 'オフライン保存にはHTTPSで開く必要があります';
+      status.style.color = '#ffd08a';
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      await navigator.serviceWorker.ready;
+      // SWがこのページを制御するまで少し待つ。初回アクセス時は次回起動から確実に制御される。
+      if (navigator.serviceWorker.controller) {
+        status.textContent = '✓ オフライン利用の準備ができています';
+      } else {
+        status.textContent = '✓ 保存しました。Safariでこのページを一度再読み込みしてください';
+      }
+      status.style.color = '#9be7a5';
+      reg.update().catch(() => {});
+    } catch (err) {
+      status.textContent = 'オフライン保存に失敗しました。ネット接続を確認してください';
+      status.style.color = '#ffaaaa';
+      console.error('Service Worker registration failed:', err);
+    }
+  })();
+</script>
+
+</body>
+</html>
