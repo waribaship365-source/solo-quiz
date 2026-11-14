@@ -45,6 +45,8 @@
   #btn-play { background-color: #0f3460; color: #fff; border: 2px solid #e94560; }
   #btn-resume { background-color: #2b580c; color: #fff; }
   #btn-next { background-color: #555; color: #fff; }
+  .btn-shuffle-small { font-size: 0.82rem; padding: 7px 11px; margin: 8px 0 0; border: 1px solid #9b7ac7; border-radius: 6px; background: #3d2b5c; color: #fff; cursor: pointer; }
+  #streakInfo { margin: -8px 0 20px; padding: 10px; border-radius: 8px; background: #16213e; color: #ffd166; font-size: 1.15rem; font-weight: bold; }
 
   /* ステータス表示 */
   #status {
@@ -128,6 +130,7 @@
   <div class="setup-box">
     <p style="margin:0 0 8px 0; font-size:0.9rem;">音源ファイルを複数選択してください（4曲以上推奨）</p>
     <input type="file" id="audioFiles" accept="audio/*,.mp3" multiple>
+    <div><button id="btn-shuffle" class="btn-shuffle-small">🔀 出題順シャッフル</button></div>
     <div id="trackInfo" style="margin-top:8px; font-size:0.9rem; color:#aaa;">未選択</div>
   </div>
 
@@ -135,11 +138,12 @@
   <div class="controls">
     <button id="btn-play" class="btn-ctrl">▶ 最初から再生</button>
     <button id="btn-resume" class="btn-ctrl">↻ 続きから再生</button>
-    <button id="btn-next" class="btn-ctrl">⏭ 次の曲へ</button>
+    <button id="btn-next" class="btn-ctrl">⏭ 次の曲を再生</button>
   </div>
 
   <!-- 3. 判定結果表示 -->
   <div id="status">音源を選択して「最初から再生」を押してください</div>
+  <div id="streakInfo" aria-live="polite">🔥 連続正解：0問</div>
 
   <!-- 4. 早押しボタン -->
   <div class="buzzers" id="buzzerArea">
@@ -160,6 +164,8 @@
   const btnPlay = document.getElementById('btn-play');
   const btnResume = document.getElementById('btn-resume');
   const btnNext = document.getElementById('btn-next');
+  const btnShuffle = document.getElementById('btn-shuffle');
+  const streakInfo = document.getElementById('streakInfo');
   const btnWakatta = document.getElementById('btn-wakatta');
   const buzzerArea = document.getElementById('buzzerArea');
   const choicesArea = document.getElementById('choicesArea');
@@ -169,6 +175,7 @@
   let isLocked = true;
   let startTime = 0;
   let currentObjectUrl = null;
+  let streak = 0;
 
   // ファイル名から拡張子を省く関数
   function getCleanName(filename) {
@@ -198,7 +205,7 @@
     currentIndex = 0;
     loadTrack(currentIndex);
     statusEl.style.background = "#0f3460";
-    statusEl.textContent = `${tracks.length}曲を選択しました。再生ボタンを押してください`;
+    statusEl.textContent = `${tracks.length}曲を選択しました。「最初から再生」を押してください`;
   });
 
   // 曲をセットする（読み込み完了を待たず、ブラウザに読み込みを開始させる）
@@ -278,12 +285,25 @@
   // ↻ 続きから再生
   btnResume.addEventListener('click', () => startPlayback(false));
 
-  // ⏭ 次の曲へ（音源をセット。再生はボタン操作で開始）
+  // ⏭ 次の曲をセットして、そのまま自動再生
   btnNext.addEventListener('click', () => {
     if (tracks.length === 0) return;
     currentIndex = (currentIndex + 1) % tracks.length;
     loadTrack(currentIndex);
-    statusEl.textContent = "次の曲をセットしました。「最初から再生」を押してください";
+    startPlayback(true);
+  });
+
+  // 出題順をシャッフルして、先頭の曲から再開
+  btnShuffle.addEventListener('click', () => {
+    if (tracks.length === 0) {
+      alert("先に音源ファイルを選択してください");
+      return;
+    }
+    tracks = shuffle(tracks);
+    currentIndex = 0;
+    loadTrack(currentIndex);
+    statusEl.style.background = "#0f3460";
+    statusEl.textContent = "出題順をシャッフルしました。最初の曲をセットしました";
   });
 
   // 「わかった！」押下時の処理
@@ -337,9 +357,13 @@
     buttons.forEach(b => b.disabled = true);
 
     if (selectedName === correctName) {
+      streak += 1;
+      streakInfo.textContent = `🔥 連続正解：${streak}問`;
       statusEl.style.background = "#2b580c"; // 緑色
       statusEl.innerHTML = `⭕ 正解！<br><span style="font-size:1.1rem;">${correctName}</span>`;
     } else {
+      streak = 0;
+      streakInfo.textContent = "🔥 連続正解：0問";
       statusEl.style.background = "#9b1c1c"; // 赤色
       statusEl.innerHTML = `❌ 残念！<br><span style="font-size:1.1rem;">正解は「${correctName}」でした</span>`;
     }
